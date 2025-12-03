@@ -2,9 +2,10 @@ import pandas as pd
 from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import accuracy_score
-from google.cloud import storage
+import boto3
 import joblib
 from datetime import datetime
+import os
 
 # Download necessary data - Iris data from sklearn library
 # We define a function to download the data
@@ -27,15 +28,18 @@ def train_model(X_train, y_train):
   model.fit(X_train, y_train)
   return model
 
-# Define a function to save the model both locally and in GCS
-def save_model_to_gcs(model, bucket_name, blob_name):
-  joblib.dump(model, "model.joblib")
+# Define a function to save the model both locally and in S3
+def save_model_to_s3(model, bucket_name, object_key):
+  # Save model locally first
+  local_filename = "model.joblib"
+  joblib.dump(model, local_filename)
   
-  # Save the model to GCS
-  storage_client = storage.Client()
-  bucket = storage_client.bucket(bucket_name)
-  blob = bucket.blob(blob_name)
-  blob.upload_from_filename('model.joblib')
+  # Upload to S3
+  s3_client = boto3.client('s3')
+  s3_client.upload_file(local_filename, bucket_name, object_key)
+  
+  # Clean up local file
+  os.remove(local_filename)
 
 # Putting all functions together
 def main():
@@ -51,14 +55,12 @@ def main():
   accuracy = accuracy_score(y_test, y_pred)
   print(f'Model accuracy: {accuracy}')
   
-  # Save the model to gcs
-  bucket_name = "github-actions-gcp-models-1"
+  # Save the model to S3
+  bucket_name = os.environ.get('AWS_S3_BUCKET', 'your-bucket-name')
   timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
-  blob_name = f"trained_models/model_{timestamp}.joblib"
-  save_model_to_gcs(model, bucket_name, blob_name)
-  print(f"Model saved to gs://{bucket_name}/{blob_name}")
+  object_key = f"trained_models/model_{timestamp}.joblib"
+  save_model_to_s3(model, bucket_name, object_key)
+  print(f"Model saved to s3://{bucket_name}/{object_key}")
   
 if __name__ == "__main__":
   main()
-
-  
